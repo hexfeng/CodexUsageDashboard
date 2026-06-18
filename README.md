@@ -2,13 +2,15 @@
 
 Windows floating widget for Codex local usage limits and token activity.
 
+![Codex Usage Widget](docs/images/codex-usage-widget.png)
+
 The widget reads local Codex session logs from `%USERPROFILE%\.codex\sessions`.
 It does not call the OpenAI API, scrape the Usage Dashboard, or read other AI tools.
 
 ## v0.1 Scope
 
 - Single floating widget view.
-- 14-day token heatmap from local `token_count` events.
+- 12-month token heatmap from local `token_count` events with daily, weekly, and cumulative views.
 - 5h and weekly usage bars from local `rate_limits` snapshots.
 - Today token total, session count, freshness status, manual refresh, and always-on-top toggle.
 - Tauri tray menu: Show, Hide, Refresh, Exit.
