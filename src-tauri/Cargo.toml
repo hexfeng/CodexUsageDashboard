@@ -1,0 +1,29 @@
+[package]
+name = "codex-usage-widget"
+version = "0.1.0"
+description = "Windows floating widget for Codex local usage limits and token activity"
+authors = ["Codex Usage Widget"]
+edition = "2021"
+
+[lib]
+name = "codex_usage_widget_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+notify = "7"
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+thiserror = "1"
+tokio = { version = "1", features = ["time"] }
+walkdir = "2"
+
+[dev-dependencies]
+tempfile = "3"
