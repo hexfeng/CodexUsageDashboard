@@ -123,6 +123,38 @@ describe("DashboardWidget", () => {
     expect(container.querySelector(".segment-active.segment-critical")).toBeInTheDocument();
   });
 
+  it("fills limit bars from remaining percentage", () => {
+    const state: DashboardState = {
+      ...baseState,
+      limits: {
+        fiveHour: {
+          ...baseState.limits.fiveHour,
+          usedPercent: 1,
+          remainingPercent: 99,
+        },
+        weekly: {
+          ...baseState.limits.weekly,
+          usedPercent: 100,
+          remainingPercent: 0,
+        },
+        planType: "plus",
+      },
+    };
+
+    const { container } = render(
+      <DashboardWidget state={state} pinned={true} onRefresh={vi.fn()} onTogglePin={vi.fn()} />,
+    );
+
+    expect(screen.getByText("Remaining 99%")).toBeInTheDocument();
+    expect(screen.getByText("Remaining 0%")).toBeInTheDocument();
+    expect(
+      container.querySelectorAll('section[aria-label="5h 1% used"] .segment-active.segment-ok'),
+    ).toHaveLength(10);
+    expect(
+      container.querySelectorAll('section[aria-label="Weekly 100% used"] .segment-active.segment-critical'),
+    ).toHaveLength(0);
+  });
+
   it("ticks the freshness label between data refreshes", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-17T17:09:00.000Z"));

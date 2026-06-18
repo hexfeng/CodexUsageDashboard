@@ -25,7 +25,7 @@ export function LimitBar({ limit }: LimitBarProps) {
   const usedPercent = limit.usedPercent ?? 0;
   const remainingPercent = Math.max(0, Math.round(limit.remainingPercent ?? 100 - usedPercent));
   const tone = getLimitTone(usedPercent);
-  const activeSegments = Math.max(0, Math.min(10, Math.round(remainingPercent / 10)));
+  const activeSegments = getActiveSegments(remainingPercent);
 
   return (
     <section className="limit-row" aria-label={`${limit.label} ${formatPercent(usedPercent)} used`}>
@@ -45,4 +45,12 @@ export function LimitBar({ limit }: LimitBarProps) {
       {limit.unusual ? <div className="limit-note">unusual reset window</div> : null}
     </section>
   );
+}
+
+function getActiveSegments(remainingPercent: number): number {
+  if (remainingPercent > 0) {
+    return Math.max(1, Math.min(10, Math.round(remainingPercent / 10)));
+  }
+
+  return 0;
 }

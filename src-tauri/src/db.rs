@@ -366,6 +366,8 @@ fn limit_summary(snapshot: Option<LimitSnapshot>) -> LimitSummary {
 }
 
 fn bucket(label: &str, used_percent: Option<f64>, reset_at: Option<i64>, unusual: bool) -> LimitBucket {
+    let used_percent = normalize_used_percent_after_reset(used_percent, reset_at);
+
     LimitBucket {
         label: label.to_string(),
         used_percent,
@@ -375,6 +377,17 @@ fn bucket(label: &str, used_percent: Option<f64>, reset_at: Option<i64>, unusual
         available: used_percent.is_some(),
         unusual,
     }
+}
+
+fn normalize_used_percent_after_reset(used_percent: Option<f64>, reset_at: Option<i64>) -> Option<f64> {
+    let used = used_percent?;
+    let reset_at = reset_at?;
+
+    if used >= 99.0 && reset_at <= Utc::now().timestamp() {
+        return Some(1.0);
+    }
+
+    Some(used)
 }
 
 fn unavailable(label: &str) -> LimitBucket {
@@ -565,5 +578,28 @@ mod tests {
 
         assert_eq!(state.freshness.state, "fresh");
         assert_eq!(state.updated_at, db.get_config("last_scan_at").unwrap());
+    }
+
+    #[test]
+    fn expired_exhausted_limit_bucket_displays_as_reset_remaining() {
+        let db = AppDb::in_memory().unwrap();
+        db.insert_limit_snapshot(&LimitSnapshot {
+            captured_at: Utc::now().to_rfc3339(),
+            source_file: "rollout.jsonl".to_string(),
+            five_hour_used_percent: Some(100.0),
+            five_hour_reset_at: Some(Utc::now().timestamp() - 1),
+            weekly_used_percent: Some(16.0),
+            weekly_reset_at: Some(Utc::now().timestamp() + 86_400),
+            plan_type: Some("plus".to_string()),
+            unusual: false,
+        })
+        .unwrap();
+
+        let settings = db.get_settings("sessions".to_string()).unwrap();
+        let state = db.dashboard_state(&settings, "sessions".to_string()).unwrap();
+
+        assert_eq!(state.limits.five_hour.used_percent, Some(1.0));
+        assert_eq!(state.limits.five_hour.remaining_percent, Some(99.0));
+        assert_eq!(state.limits.five_hour.reset_label.as_deref(), Some("now"));
     }
 }
