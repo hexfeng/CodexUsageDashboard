@@ -70,7 +70,7 @@ fn create_tray(app: &tauri::AppHandle<Wry>) -> tauri::Result<()> {
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
                     let next_state = {
-                        let Ok(scanner) = scanner.try_lock() else {
+                        let Ok(scanner) = scanner.lock() else {
                             return;
                         };
                         let _ = scanner.scan_recent();

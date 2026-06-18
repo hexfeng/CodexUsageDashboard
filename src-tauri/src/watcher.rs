@@ -10,7 +10,7 @@ pub fn start_polling(
     cache: Arc<Mutex<Option<DashboardState>>>,
 ) {
     tauri::async_runtime::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(30));
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
         let mut needs_history_scan = true;
         loop {
             interval.tick().await;

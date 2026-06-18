@@ -287,6 +287,10 @@ impl AppDb {
         Ok(())
     }
 
+    pub fn record_scan_completed(&self, scanned_at: DateTime<Utc>) -> Result<(), rusqlite::Error> {
+        self.set_config("last_scan_at", &scanned_at.to_rfc3339())
+    }
+
     pub fn dashboard_state(
         &self,
         settings: &Settings,
@@ -296,7 +300,9 @@ impl AppDb {
         let today = self.today_usage(&today_key)?;
         let heatmap_days = self.heatmap_days(settings.heatmap_days)?;
         let latest_limit = self.latest_limit_snapshot()?;
-        let updated_at = latest_limit.as_ref().map(|snapshot| snapshot.captured_at.clone());
+        let updated_at = self
+            .get_config("last_scan_at")?
+            .or_else(|| latest_limit.as_ref().map(|snapshot| snapshot.captured_at.clone()));
         let freshness = freshness(updated_at.as_deref(), settings.stale_after_minutes);
 
         let mut warnings = Vec::new();
@@ -536,5 +542,28 @@ mod tests {
             db.latest_limit_snapshot().unwrap().unwrap().five_hour_used_percent,
             Some(42.0)
         );
+    }
+
+    #[test]
+    fn dashboard_freshness_uses_last_successful_scan_time() {
+        let db = AppDb::in_memory().unwrap();
+        db.insert_limit_snapshot(&LimitSnapshot {
+            captured_at: "2026-06-17T18:00:00.000Z".to_string(),
+            source_file: "old.jsonl".to_string(),
+            five_hour_used_percent: Some(42.0),
+            five_hour_reset_at: Some(1_781_724_000),
+            weekly_used_percent: Some(68.0),
+            weekly_reset_at: Some(1_782_079_200),
+            plan_type: Some("plus".to_string()),
+            unusual: false,
+        })
+        .unwrap();
+        db.record_scan_completed(Utc::now()).unwrap();
+
+        let settings = db.get_settings("sessions".to_string()).unwrap();
+        let state = db.dashboard_state(&settings, "sessions".to_string()).unwrap();
+
+        assert_eq!(state.freshness.state, "fresh");
+        assert_eq!(state.updated_at, db.get_config("last_scan_at").unwrap());
     }
 }

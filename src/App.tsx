@@ -29,7 +29,7 @@ export default function App() {
     void loadState();
     const id = window.setInterval(() => {
       void loadState();
-    }, 30_000);
+    }, 60_000);
 
     return () => window.clearInterval(id);
   }, [loadState]);

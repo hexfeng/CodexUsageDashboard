@@ -13,6 +13,7 @@ It does not call the OpenAI API, scrape the Usage Dashboard, or read other AI to
 - 12-month token heatmap from local `token_count` events with daily, weekly, and cumulative views.
 - 5h and weekly usage bars from local `rate_limits` snapshots.
 - Today token total, session count, freshness status, manual refresh, and always-on-top toggle.
+- Automatic local refresh every 60 seconds.
 - Tauri tray menu: Show, Hide, Refresh, Exit.
 
 ## Data Model

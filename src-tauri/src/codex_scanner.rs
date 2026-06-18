@@ -2,6 +2,7 @@ use crate::db::AppDb;
 use crate::models::{DashboardState, Settings};
 use crate::rate_limit_parser::parse_limit_snapshot;
 use crate::token_parser::parse_token_event;
+use chrono::Utc;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -83,6 +84,10 @@ impl CodexScanner {
                 }
             }
         }
+
+        self.db
+            .record_scan_completed(Utc::now())
+            .map_err(|error| error.to_string())?;
 
         Ok(report)
     }

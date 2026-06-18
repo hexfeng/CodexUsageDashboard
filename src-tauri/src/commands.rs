@@ -21,29 +21,22 @@ pub fn get_dashboard_state(state: State<'_, AppState>) -> Result<DashboardState,
 }
 
 #[tauri::command]
-pub fn refresh_now(app: AppHandle, state: State<'_, AppState>) -> Result<DashboardState, String> {
+pub async fn refresh_now(app: AppHandle, state: State<'_, AppState>) -> Result<DashboardState, String> {
     let scanner = Arc::clone(&state.scanner);
     let cache = Arc::clone(&state.cache);
-    let current = get_dashboard_state(state)?;
 
-    tauri::async_runtime::spawn(async move {
-        let next_state = {
-            let Ok(scanner) = scanner.try_lock() else {
-                return;
-            };
-            let _ = scanner.scan_recent();
-            scanner.dashboard_state().ok()
-        };
+    let next_state = tauri::async_runtime::spawn_blocking(move || {
+        let scanner = scanner.lock().map_err(|error| error.to_string())?;
+        scanner.scan_recent()?;
+        scanner.dashboard_state()
+    })
+    .await
+    .map_err(|error| error.to_string())??;
 
-        if let Some(next_state) = next_state {
-            if let Ok(mut cached) = cache.lock() {
-                *cached = Some(next_state.clone());
-            }
-            let _ = app.emit("dashboard-state-updated", next_state);
-        }
-    });
+    *cache.lock().map_err(|error| error.to_string())? = Some(next_state.clone());
+    let _ = app.emit("dashboard-state-updated", next_state.clone());
 
-    Ok(current)
+    Ok(next_state)
 }
 
 #[tauri::command]
