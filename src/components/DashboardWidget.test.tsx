@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DashboardWidget } from "./DashboardWidget";
@@ -121,5 +121,29 @@ describe("DashboardWidget", () => {
 
     expect(container.querySelector(".segment-active.segment-warning")).toBeInTheDocument();
     expect(container.querySelector(".segment-active.segment-critical")).toBeInTheDocument();
+  });
+
+  it("ticks the freshness label between data refreshes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-17T17:09:00.000Z"));
+    const state: DashboardState = {
+      ...baseState,
+      updatedAt: "2026-06-17T17:09:00.000Z",
+      freshness: { state: "fresh", label: "Updated 0s ago", ageSeconds: 0 },
+    };
+
+    try {
+      render(<DashboardWidget state={state} pinned={true} onRefresh={vi.fn()} onTogglePin={vi.fn()} />);
+
+      expect(screen.getAllByText("Updated 0s ago")).toHaveLength(2);
+
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+
+      expect(screen.getAllByText("Updated 2s ago")).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pin, PinOff, RefreshCw } from "lucide-react";
 import { Heatmap } from "./Heatmap";
 import { LimitBar } from "./LimitBar";
-import { formatTokens } from "../lib/format";
+import { formatTokens, getFreshness } from "../lib/format";
 import type { HeatmapMode } from "../lib/heatmap";
 import type { DashboardState } from "../types";
 
@@ -22,15 +22,26 @@ export function DashboardWidget({
   onTogglePin,
 }: DashboardWidgetProps) {
   const [heatmapMode, setHeatmapMode] = useState<HeatmapMode>("daily");
+  const [now, setNow] = useState(() => new Date());
+  const freshness = state.updatedAt ? getFreshness(state.updatedAt, now) : state.freshness;
+
+  useEffect(() => {
+    setNow(new Date());
+    const id = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(id);
+  }, [state.updatedAt]);
 
   return (
     <main className="widget-shell">
       <header className="widget-header">
         <div className="drag-zone" data-tauri-drag-region>
           <h1 data-tauri-drag-region>Codex Usage</h1>
-          <p className={`freshness freshness-${state.freshness.state}`} data-tauri-drag-region>
+          <p className={`freshness freshness-${freshness.state}`} data-tauri-drag-region>
             <span className="freshness-dot" />
-            {state.freshness.label}
+            {freshness.label}
           </p>
         </div>
         <div className="header-actions">
@@ -80,7 +91,7 @@ export function DashboardWidget({
       <section className="summary-strip">
         <span>Today</span>
         <strong>{formatTokens(state.today.totalTokens)} tokens</strong>
-        <span>{state.freshness.label}</span>
+        <span>{freshness.label}</span>
       </section>
 
       <section className="limits-panel">
