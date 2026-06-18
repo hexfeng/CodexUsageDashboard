@@ -366,7 +366,7 @@ fn limit_summary(snapshot: Option<LimitSnapshot>) -> LimitSummary {
 }
 
 fn bucket(label: &str, used_percent: Option<f64>, reset_at: Option<i64>, unusual: bool) -> LimitBucket {
-    let used_percent = normalize_used_percent_after_reset(used_percent, reset_at);
+    let (used_percent, reset_at) = normalize_bucket_after_reset(label, used_percent, reset_at);
 
     LimitBucket {
         label: label.to_string(),
@@ -379,15 +379,42 @@ fn bucket(label: &str, used_percent: Option<f64>, reset_at: Option<i64>, unusual
     }
 }
 
-fn normalize_used_percent_after_reset(used_percent: Option<f64>, reset_at: Option<i64>) -> Option<f64> {
-    let used = used_percent?;
-    let reset_at = reset_at?;
-
-    if used >= 99.0 && reset_at <= Utc::now().timestamp() {
-        return Some(1.0);
+fn normalize_bucket_after_reset(
+    label: &str,
+    used_percent: Option<f64>,
+    reset_at: Option<i64>,
+) -> (Option<f64>, Option<i64>) {
+    if used_percent.is_none() {
+        return (used_percent, reset_at);
     }
 
-    Some(used)
+    let Some(reset_at_value) = reset_at else {
+        return (used_percent, reset_at);
+    };
+
+    let now = Utc::now().timestamp();
+    if reset_at_value > now {
+        return (used_percent, reset_at);
+    }
+
+    let Some(window_seconds) = window_seconds(label) else {
+        return (used_percent, reset_at);
+    };
+
+    let mut next_reset = reset_at_value;
+    while next_reset <= now {
+        next_reset += window_seconds;
+    }
+
+    (Some(1.0), Some(next_reset))
+}
+
+fn window_seconds(label: &str) -> Option<i64> {
+    match label {
+        "5h" => Some(300 * 60),
+        "Weekly" => Some(10_080 * 60),
+        _ => None,
+    }
 }
 
 fn unavailable(label: &str) -> LimitBucket {
@@ -581,12 +608,12 @@ mod tests {
     }
 
     #[test]
-    fn expired_exhausted_limit_bucket_displays_as_reset_remaining() {
+    fn expired_limit_bucket_displays_as_reset_remaining() {
         let db = AppDb::in_memory().unwrap();
         db.insert_limit_snapshot(&LimitSnapshot {
             captured_at: Utc::now().to_rfc3339(),
             source_file: "rollout.jsonl".to_string(),
-            five_hour_used_percent: Some(100.0),
+            five_hour_used_percent: Some(25.0),
             five_hour_reset_at: Some(Utc::now().timestamp() - 1),
             weekly_used_percent: Some(16.0),
             weekly_reset_at: Some(Utc::now().timestamp() + 86_400),
@@ -600,6 +627,6 @@ mod tests {
 
         assert_eq!(state.limits.five_hour.used_percent, Some(1.0));
         assert_eq!(state.limits.five_hour.remaining_percent, Some(99.0));
-        assert_eq!(state.limits.five_hour.reset_label.as_deref(), Some("now"));
+        assert_ne!(state.limits.five_hour.reset_label.as_deref(), Some("now"));
     }
 }

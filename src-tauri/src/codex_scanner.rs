@@ -165,9 +165,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let sessions = dir.path().join("sessions");
         fs::create_dir_all(&sessions).unwrap();
+        let five_hour_reset_at = Utc::now().timestamp() + 3_600;
+        let weekly_reset_at = Utc::now().timestamp() + 7 * 86_400;
         fs::write(
             sessions.join("rollout-2026-06-17T17-00-00-test.jsonl"),
-            r#"{"timestamp":"2026-06-17T17:10:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":80,"reasoning_output_tokens":20,"total_tokens":1080},"last_token_usage":{"input_tokens":250,"cached_input_tokens":50,"output_tokens":30,"reasoning_output_tokens":5,"total_tokens":280}},"rate_limits":{"primary":{"used_percent":42.0,"window_minutes":300,"resets_at":1781720400},"secondary":{"used_percent":68.0,"window_minutes":10080,"resets_at":1782079200},"plan_type":"plus"}}}"#,
+            format!(
+                r#"{{"timestamp":"2026-06-17T17:10:00.000Z","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":80,"reasoning_output_tokens":20,"total_tokens":1080}},"last_token_usage":{{"input_tokens":250,"cached_input_tokens":50,"output_tokens":30,"reasoning_output_tokens":5,"total_tokens":280}}}},"rate_limits":{{"primary":{{"used_percent":42.0,"window_minutes":300,"resets_at":{five_hour_reset_at}}},"secondary":{{"used_percent":68.0,"window_minutes":10080,"resets_at":{weekly_reset_at}}},"plan_type":"plus"}}}}}}"#
+            ),
         )
         .unwrap();
 
