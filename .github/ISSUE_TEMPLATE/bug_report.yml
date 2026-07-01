@@ -1,0 +1,31 @@
+name: Bug report
+description: Report a Codex Usage Widget problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please paste the diagnostic summary from the app instead of attaching Codex session files.
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic summary
+      description: Use Diagnostics -> Copy.
+      placeholder: Paste the copied diagnostic summary here.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the visible behavior and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Keep this to app actions and high-level environment details. Do not paste session payloads.
+    validations:
+      required: false

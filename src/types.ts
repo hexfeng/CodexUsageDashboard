@@ -56,3 +56,25 @@ export interface Settings {
   staleAfterMinutes: number;
   heatmapDays: number;
 }
+
+export interface DiagnosticsState {
+  appVersion: string;
+  platform: string;
+  arch: string;
+  sessionsPath: string;
+  sessionsExists: boolean;
+  sessionsReadable: boolean;
+  databasePath: string;
+  logDirectory: string;
+  lastScanStartedAt: string | null;
+  lastScanCompletedAt: string | null;
+  lastSuccessfulDataUpdate: string | null;
+  watcherStatus: string;
+  filesScanned: number;
+  tokenEventsAccepted: number;
+  limitSnapshotsAccepted: number;
+  malformedLines: number;
+  ioFailures: number;
+  lastScanResult: string;
+  lastError: string | null;
+}

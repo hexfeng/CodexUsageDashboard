@@ -16,10 +16,13 @@ pub struct CodexScanner {
     default_sessions_path: PathBuf,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ScanReport {
+    pub files_scanned: usize,
     pub token_events_added: usize,
     pub limit_snapshots_added: usize,
+    pub malformed_lines: usize,
+    pub io_failures: usize,
 }
 
 impl CodexScanner {
@@ -57,26 +60,66 @@ impl CodexScanner {
         self.scan_files(files)
     }
 
+    #[cfg(test)]
     pub fn warm_start_dashboard_state(&self) -> Result<DashboardState, String> {
         self.scan_history()?;
         self.dashboard_state()
     }
 
     fn scan_files(&self, files: Vec<PathBuf>) -> Result<ScanReport, String> {
-        let mut previous_snapshot = self.db.latest_limit_snapshot().map_err(|error| error.to_string())?;
+        let mut previous_snapshot = self
+            .db
+            .latest_limit_snapshot()
+            .map_err(|error| error.to_string())?;
         let mut report = ScanReport::default();
 
         for path in files {
-            let file = File::open(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+            let file = match File::open(&path) {
+                Ok(file) => file,
+                Err(error) => {
+                    report.io_failures += 1;
+                    log::warn!(
+                        "Skipping unreadable session log {}: {error}",
+                        path.display()
+                    );
+                    continue;
+                }
+            };
+            report.files_scanned += 1;
+
             for (index, line) in BufReader::new(file).lines().enumerate() {
-                let line = line.map_err(|error| format!("{}: {error}", path.display()))?;
+                let line = match line {
+                    Ok(line) => line,
+                    Err(error) => {
+                        report.io_failures += 1;
+                        log::warn!("Skipping unreadable line in {}: {error}", path.display());
+                        continue;
+                    }
+                };
+
+                if serde_json::from_str::<serde_json::Value>(&line).is_err() {
+                    report.malformed_lines += 1;
+                    log::warn!(
+                        "Skipping malformed JSONL line {}:{}",
+                        path.display(),
+                        index + 1
+                    );
+                    continue;
+                }
+
                 if let Some(event) = parse_token_event(&line, &path, index + 1) {
-                    if self.db.insert_token_event(&event).map_err(|error| error.to_string())? {
+                    if self
+                        .db
+                        .insert_token_event(&event)
+                        .map_err(|error| error.to_string())?
+                    {
                         report.token_events_added += 1;
                     }
                 }
 
-                if let Some(snapshot) = parse_limit_snapshot(&line, &path, previous_snapshot.as_ref()) {
+                if let Some(snapshot) =
+                    parse_limit_snapshot(&line, &path, previous_snapshot.as_ref())
+                {
                     self.db
                         .insert_limit_snapshot(&snapshot)
                         .map_err(|error| error.to_string())?;
@@ -111,7 +154,11 @@ fn rollout_files(path: &Path, days_back: i64, max_files: usize) -> Result<Vec<Pa
         .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
 
     let mut files = Vec::new();
-    for entry in WalkDir::new(path).follow_links(false).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(path)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -246,5 +293,36 @@ mod tests {
             .unwrap()
             .to_string_lossy()
             .contains("17-00-19"));
+    }
+
+    #[test]
+    fn malformed_jsonl_lines_are_counted_and_skipped() {
+        let dir = tempdir().unwrap();
+        let sessions = dir.path().join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        fs::write(
+            sessions.join("rollout-2026-06-17T17-00-00-test.jsonl"),
+            r#"not-json
+{"timestamp":"2026-06-17T17:10:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":4,"reasoning_output_tokens":1,"total_tokens":15}},"rate_limits":null}}
+"#,
+        )
+        .unwrap();
+
+        let db = AppDb::in_memory().unwrap();
+        let scanner = CodexScanner::new(db);
+        scanner
+            .update_settings(&Settings {
+                sessions_path: sessions.to_string_lossy().to_string(),
+                always_on_top: true,
+                stale_after_minutes: 5,
+                heatmap_days: 14,
+            })
+            .unwrap();
+
+        let report = scanner.scan_recent().unwrap();
+
+        assert_eq!(report.files_scanned, 1);
+        assert_eq!(report.malformed_lines, 1);
+        assert_eq!(report.token_events_added, 1);
     }
 }

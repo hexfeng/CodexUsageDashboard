@@ -70,6 +70,30 @@ pub struct Settings {
     pub heatmap_days: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsState {
+    pub app_version: String,
+    pub platform: String,
+    pub arch: String,
+    pub sessions_path: String,
+    pub sessions_exists: bool,
+    pub sessions_readable: bool,
+    pub database_path: String,
+    pub log_directory: String,
+    pub last_scan_started_at: Option<String>,
+    pub last_scan_completed_at: Option<String>,
+    pub last_successful_data_update: Option<String>,
+    pub watcher_status: String,
+    pub files_scanned: usize,
+    pub token_events_accepted: usize,
+    pub limit_snapshots_accepted: usize,
+    pub malformed_lines: usize,
+    pub io_failures: usize,
+    pub last_scan_result: String,
+    pub last_error: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct UsageDelta {
     pub total_tokens: i64,

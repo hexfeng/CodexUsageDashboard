@@ -48,7 +48,9 @@ fn parse_usage_delta(value: &Value) -> Option<UsageDelta> {
 }
 
 fn timestamp_to_local_date(timestamp: &str) -> Option<String> {
-    let utc: DateTime<Utc> = DateTime::parse_from_rfc3339(timestamp).ok()?.with_timezone(&Utc);
+    let utc: DateTime<Utc> = DateTime::parse_from_rfc3339(timestamp)
+        .ok()?
+        .with_timezone(&Utc);
     Some(utc.with_timezone(&Local).format("%Y-%m-%d").to_string())
 }
 

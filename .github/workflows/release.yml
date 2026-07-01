@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build Windows x64 Release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check version matches tag
+        shell: pwsh
+        run: npm run check:version -- $env:GITHUB_REF_NAME
+
+      - name: Validate frontend
+        run: npm test
+
+      - name: Validate Rust
+        working-directory: src-tauri
+        run: |
+          cargo fmt -- --check
+          cargo test
+          cargo check
+
+      - name: Build and publish Tauri release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Codex Usage Widget ${{ github.ref_name }}"
+          releaseBody: |
+            Codex Usage Widget Windows x64 Beta.
+
+            Supported systems: Windows 10/11 x64.
+            Installer: unsigned NSIS setup executable.
+            Updates: signed Tauri updater artifacts, installed only after user confirmation.
+            Known limitation: Windows SmartScreen may warn because this Beta is not Authenticode-signed.
+          prerelease: ${{ contains(github.ref_name, '-rc.') }}
+
+      - name: Upload installer checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $installer = Get-ChildItem src-tauri\target\release\bundle\nsis\*.exe | Select-Object -First 1
+          if (-not $installer) {
+            throw "NSIS installer was not produced."
+          }
+          $hash = Get-FileHash $installer.FullName -Algorithm SHA256
+          "$($hash.Hash)  $($installer.Name)" | Set-Content -NoNewline -Encoding ASCII "SHA256SUMS.txt"
+          gh release upload "${env:GITHUB_REF_NAME}" "SHA256SUMS.txt" --clobber

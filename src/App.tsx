@@ -1,15 +1,34 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { getDashboardState, refreshNow, setAlwaysOnTop } from "./lib/api";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import {
+  getAutostartEnabled,
+  getDashboardState,
+  getDiagnostics,
+  openLogsFolder,
+  refreshNow,
+  setAlwaysOnTop,
+  setAutostartEnabled,
+} from "./lib/api";
 import { createFallbackState } from "./lib/fallbackState";
+import { DiagnosticsPanel } from "./components/DiagnosticsPanel";
 import { DashboardWidget } from "./components/DashboardWidget";
-import type { DashboardState } from "./types";
+import { UpdatePrompt } from "./components/UpdatePrompt";
+import type { DashboardState, DiagnosticsState } from "./types";
 import "./styles.css";
 
 export default function App() {
   const [state, setState] = useState<DashboardState>(() => createFallbackState());
   const [pinned, setPinned] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticsState | null>(null);
+  const [diagnosticsBusy, setDiagnosticsBusy] = useState(false);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
+  const [autostart, setAutostart] = useState(false);
+  const [update, setUpdate] = useState<Update | null>(null);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const loadState = useCallback(async () => {
     setRefreshing(true);
@@ -58,6 +77,65 @@ export default function App() {
     };
   }, []);
 
+  const loadDiagnostics = useCallback(async () => {
+    setDiagnosticsBusy(true);
+    setDiagnosticsError(null);
+    try {
+      const [nextDiagnostics, nextAutostart] = await Promise.all([getDiagnostics(), getAutostartEnabled()]);
+      setDiagnostics(nextDiagnostics);
+      setAutostart(nextAutostart);
+    } catch (error) {
+      setDiagnosticsError(getErrorMessage(error));
+    } finally {
+      setDiagnosticsBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let disposed = false;
+    const unlisten = listen("show-diagnostics", () => {
+      if (!disposed) {
+        setDiagnosticsOpen(true);
+        void loadDiagnostics();
+      }
+    }).catch((error) => {
+      setState((current) => ({
+        ...current,
+        warnings: [`Unable to subscribe to diagnostics event: ${getErrorMessage(error)}`],
+      }));
+      return () => {};
+    });
+
+    return () => {
+      disposed = true;
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [loadDiagnostics]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    const id = window.setTimeout(() => {
+      check()
+        .then((nextUpdate) => {
+          if (nextUpdate) {
+            setUpdate(nextUpdate);
+          }
+        })
+        .catch((error) => {
+          console.info("Update check skipped:", getErrorMessage(error));
+        });
+    }, 5_000);
+
+    return () => window.clearTimeout(id);
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -86,14 +164,67 @@ export default function App() {
     }
   }, [pinned]);
 
+  const handleToggleAutostart = useCallback(async (enabled: boolean) => {
+    const previous = autostart;
+    setAutostart(enabled);
+    try {
+      setAutostart(await setAutostartEnabled(enabled));
+    } catch (error) {
+      setAutostart(previous);
+      setDiagnosticsError(getErrorMessage(error));
+    }
+  }, [autostart]);
+
+  const handleInstallUpdate = useCallback(async () => {
+    if (!update) {
+      return;
+    }
+
+    setUpdateInstalling(true);
+    setUpdateError(null);
+    try {
+      await update.downloadAndInstall();
+    } catch (error) {
+      setUpdateError(getErrorMessage(error));
+    } finally {
+      setUpdateInstalling(false);
+    }
+  }, [update]);
+
   return (
-    <DashboardWidget
-      state={state}
-      pinned={pinned}
-      refreshing={refreshing}
-      onRefresh={handleRefresh}
-      onTogglePin={handleTogglePin}
-    />
+    <>
+      <DashboardWidget
+        state={state}
+        pinned={pinned}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        onTogglePin={handleTogglePin}
+      />
+      {diagnosticsOpen ? (
+        <DiagnosticsPanel
+          diagnostics={diagnostics}
+          autostartEnabled={autostart}
+          busy={diagnosticsBusy}
+          error={diagnosticsError}
+          onClose={() => setDiagnosticsOpen(false)}
+          onRefresh={loadDiagnostics}
+          onOpenLogs={() => {
+            void openLogsFolder().catch((error) => setDiagnosticsError(getErrorMessage(error)));
+          }}
+          onToggleAutostart={handleToggleAutostart}
+        />
+      ) : null}
+      {update ? (
+        <UpdatePrompt
+          version={update.version}
+          notes={typeof update.body === "string" ? update.body : undefined}
+          installing={updateInstalling}
+          error={updateError}
+          onInstall={handleInstallUpdate}
+          onDismiss={() => setUpdate(null)}
+        />
+      ) : null}
+    </>
   );
 }
 

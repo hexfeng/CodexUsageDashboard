@@ -119,7 +119,8 @@ mod tests {
         };
         let line = r#"{"timestamp":"2026-06-17T17:10:00.000Z","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":42.0,"window_minutes":300,"resets_at":1781720400},"secondary":{"used_percent":82.0,"window_minutes":10080,"resets_at":1782079200},"plan_type":"plus"}}}"#;
 
-        let snapshot = parse_limit_snapshot(line, &PathBuf::from("rollout.jsonl"), Some(&previous)).unwrap();
+        let snapshot =
+            parse_limit_snapshot(line, &PathBuf::from("rollout.jsonl"), Some(&previous)).unwrap();
 
         assert!(snapshot.unusual);
     }

@@ -238,7 +238,11 @@ impl AppDb {
             "#,
         )?;
         let rows = stmt.query_map(params![count], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
         })?;
 
         let mut raw = Vec::new();
@@ -261,9 +265,7 @@ impl AppDb {
 
     pub fn get_settings(&self, sessions_path: String) -> Result<Settings, rusqlite::Error> {
         Ok(Settings {
-            sessions_path: self
-                .get_config("sessions_path")?
-                .unwrap_or(sessions_path),
+            sessions_path: self.get_config("sessions_path")?.unwrap_or(sessions_path),
             always_on_top: self
                 .get_config("always_on_top")?
                 .map(|value| value == "true")
@@ -282,8 +284,18 @@ impl AppDb {
 
     pub fn update_settings(&self, settings: &Settings) -> Result<(), rusqlite::Error> {
         self.set_config("sessions_path", &settings.sessions_path)?;
-        self.set_config("always_on_top", if settings.always_on_top { "true" } else { "false" })?;
-        self.set_config("stale_after_minutes", &settings.stale_after_minutes.to_string())?;
+        self.set_config(
+            "always_on_top",
+            if settings.always_on_top {
+                "true"
+            } else {
+                "false"
+            },
+        )?;
+        self.set_config(
+            "stale_after_minutes",
+            &settings.stale_after_minutes.to_string(),
+        )?;
         self.set_config("heatmap_days", &settings.heatmap_days.to_string())?;
         Ok(())
     }
@@ -301,16 +313,22 @@ impl AppDb {
         let today = self.today_usage(&today_key)?;
         let heatmap_days = self.heatmap_days(settings.heatmap_days)?;
         let latest_limit = self.latest_limit_snapshot()?;
-        let updated_at = self
-            .get_config("last_scan_at")?
-            .or_else(|| latest_limit.as_ref().map(|snapshot| snapshot.captured_at.clone()));
+        let updated_at = self.get_config("last_scan_at")?.or_else(|| {
+            latest_limit
+                .as_ref()
+                .map(|snapshot| snapshot.captured_at.clone())
+        });
         let freshness = freshness(updated_at.as_deref(), settings.stale_after_minutes);
 
         let mut warnings = Vec::new();
         if latest_limit.is_none() {
             warnings.push("No rate_limits found in latest Codex session logs.".to_string());
         }
-        if latest_limit.as_ref().map(|snapshot| snapshot.unusual).unwrap_or(false) {
+        if latest_limit
+            .as_ref()
+            .map(|snapshot| snapshot.unusual)
+            .unwrap_or(false)
+        {
             warnings.push("Weekly usage has an unusual reset window.".to_string());
         }
 
@@ -327,7 +345,11 @@ impl AppDb {
 
     fn get_config(&self, key: &str) -> Result<Option<String>, rusqlite::Error> {
         self.conn
-            .query_row("SELECT value FROM app_config WHERE key = ?1", params![key], |row| row.get(0))
+            .query_row(
+                "SELECT value FROM app_config WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
             .optional()
     }
 
@@ -366,7 +388,12 @@ fn limit_summary(snapshot: Option<LimitSnapshot>) -> LimitSummary {
     }
 }
 
-fn bucket(label: &str, used_percent: Option<f64>, reset_at: Option<i64>, unusual: bool) -> LimitBucket {
+fn bucket(
+    label: &str,
+    used_percent: Option<f64>,
+    reset_at: Option<i64>,
+    unusual: bool,
+) -> LimitBucket {
     let (used_percent, reset_at) = normalize_bucket_after_reset(label, used_percent, reset_at);
 
     LimitBucket {
@@ -448,7 +475,10 @@ fn freshness(updated_at: Option<&str>, stale_after_minutes: i64) -> Freshness {
     };
 
     let now = Utc::now();
-    let age = now.signed_duration_since(parsed.with_timezone(&Utc)).num_seconds().max(0);
+    let age = now
+        .signed_duration_since(parsed.with_timezone(&Utc))
+        .num_seconds()
+        .max(0);
     let state = if age > stale_after_minutes * 60 {
         "stale"
     } else {
@@ -533,8 +563,12 @@ mod tests {
     #[test]
     fn dedupes_processed_events() {
         let db = AppDb::in_memory().unwrap();
-        let first = db.insert_token_event(&event("same", 100, "2026-06-17")).unwrap();
-        let second = db.insert_token_event(&event("same", 100, "2026-06-17")).unwrap();
+        let first = db
+            .insert_token_event(&event("same", 100, "2026-06-17"))
+            .unwrap();
+        let second = db
+            .insert_token_event(&event("same", 100, "2026-06-17"))
+            .unwrap();
 
         assert!(first);
         assert!(!second);
@@ -544,8 +578,10 @@ mod tests {
     #[test]
     fn daily_rows_accumulate_multiple_events() {
         let db = AppDb::in_memory().unwrap();
-        db.insert_token_event(&event("one", 100, "2026-06-17")).unwrap();
-        db.insert_token_event(&event("two", 250, "2026-06-17")).unwrap();
+        db.insert_token_event(&event("one", 100, "2026-06-17"))
+            .unwrap();
+        db.insert_token_event(&event("two", 250, "2026-06-17"))
+            .unwrap();
 
         let usage = db.today_usage("2026-06-17").unwrap();
 
@@ -580,7 +616,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            db.latest_limit_snapshot().unwrap().unwrap().five_hour_used_percent,
+            db.latest_limit_snapshot()
+                .unwrap()
+                .unwrap()
+                .five_hour_used_percent,
             Some(42.0)
         );
     }
@@ -602,7 +641,9 @@ mod tests {
         db.record_scan_completed(Utc::now()).unwrap();
 
         let settings = db.get_settings("sessions".to_string()).unwrap();
-        let state = db.dashboard_state(&settings, "sessions".to_string()).unwrap();
+        let state = db
+            .dashboard_state(&settings, "sessions".to_string())
+            .unwrap();
 
         assert_eq!(state.freshness.state, "fresh");
         assert_eq!(state.updated_at, db.get_config("last_scan_at").unwrap());
@@ -624,7 +665,9 @@ mod tests {
         .unwrap();
 
         let settings = db.get_settings("sessions".to_string()).unwrap();
-        let state = db.dashboard_state(&settings, "sessions".to_string()).unwrap();
+        let state = db
+            .dashboard_state(&settings, "sessions".to_string())
+            .unwrap();
 
         assert_eq!(state.limits.five_hour.used_percent, Some(1.0));
         assert_eq!(state.limits.five_hour.remaining_percent, Some(99.0));

@@ -1,4 +1,5 @@
 use crate::codex_scanner::CodexScanner;
+use crate::commands::{record_scan_completed, record_scan_started, RuntimeDiagnostics};
 use crate::models::DashboardState;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -8,6 +9,7 @@ pub fn start_polling(
     app: AppHandle,
     scanner: Arc<Mutex<CodexScanner>>,
     cache: Arc<Mutex<Option<DashboardState>>>,
+    diagnostics: Arc<Mutex<RuntimeDiagnostics>>,
     needs_history_scan: bool,
 ) {
     tauri::async_runtime::spawn(async move {
@@ -19,12 +21,19 @@ pub fn start_polling(
                 let Ok(scanner) = scanner.try_lock() else {
                     continue;
                 };
-                if needs_history_scan {
-                    let _ = scanner.scan_history();
-                    needs_history_scan = false;
+                record_scan_started(&diagnostics);
+                let report = if needs_history_scan {
+                    scanner.scan_history()
                 } else {
-                    let _ = scanner.scan_recent();
-                }
+                    scanner.scan_recent()
+                };
+                needs_history_scan = false;
+                match report {
+                    Ok(report) => record_scan_completed(&diagnostics, &report, None),
+                    Err(error) => {
+                        record_scan_completed(&diagnostics, &Default::default(), Some(error))
+                    }
+                };
                 scanner.dashboard_state().ok()
             };
 
