@@ -26,6 +26,7 @@ impl AppDb {
         Ok(db)
     }
 
+    #[cfg(test)]
     pub fn in_memory() -> Result<Self, rusqlite::Error> {
         let db = Self {
             conn: Connection::open_in_memory()?,

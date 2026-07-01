@@ -20,9 +20,15 @@ pub fn run() {
             let db = AppDb::open(&AppDb::default_path())?;
             let scanner = Arc::new(Mutex::new(CodexScanner::new(db)));
             let cache = Arc::new(Mutex::new(None));
+            let mut needs_history_scan = true;
 
             if let Ok(scanner_guard) = scanner.try_lock() {
-                if let Ok(state) = scanner_guard.dashboard_state() {
+                let warmed_state = scanner_guard.warm_start_dashboard_state();
+                if warmed_state.is_ok() {
+                    needs_history_scan = false;
+                }
+
+                if let Ok(state) = warmed_state.or_else(|_| scanner_guard.dashboard_state()) {
                     if let Ok(mut cached) = cache.lock() {
                         *cached = Some(state);
                     }
@@ -35,7 +41,7 @@ pub fn run() {
             });
 
             create_tray(app.handle())?;
-            watcher::start_polling(app.handle().clone(), scanner, cache);
+            watcher::start_polling(app.handle().clone(), scanner, cache, needs_history_scan);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -8,10 +8,11 @@ pub fn start_polling(
     app: AppHandle,
     scanner: Arc<Mutex<CodexScanner>>,
     cache: Arc<Mutex<Option<DashboardState>>>,
+    needs_history_scan: bool,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
-        let mut needs_history_scan = true;
+        let mut needs_history_scan = needs_history_scan;
         loop {
             interval.tick().await;
             let state = {

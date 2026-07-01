@@ -18,7 +18,6 @@ pub struct CodexScanner {
 
 #[derive(Debug, Default)]
 pub struct ScanReport {
-    pub files_scanned: usize,
     pub token_events_added: usize,
     pub limit_snapshots_added: usize,
 }
@@ -58,12 +57,14 @@ impl CodexScanner {
         self.scan_files(files)
     }
 
+    pub fn warm_start_dashboard_state(&self) -> Result<DashboardState, String> {
+        self.scan_history()?;
+        self.dashboard_state()
+    }
+
     fn scan_files(&self, files: Vec<PathBuf>) -> Result<ScanReport, String> {
         let mut previous_snapshot = self.db.latest_limit_snapshot().map_err(|error| error.to_string())?;
-        let mut report = ScanReport {
-            files_scanned: files.len(),
-            ..ScanReport::default()
-        };
+        let mut report = ScanReport::default();
 
         for path in files {
             let file = File::open(&path).map_err(|error| format!("{}: {error}", path.display()))?;
@@ -192,6 +193,39 @@ mod tests {
         assert_eq!(report.token_events_added, 1);
         assert_eq!(report.limit_snapshots_added, 1);
         assert_eq!(state.limits.five_hour.used_percent, Some(42.0));
+    }
+
+    #[test]
+    fn warm_start_scans_before_building_initial_dashboard_state() {
+        let dir = tempdir().unwrap();
+        let sessions = dir.path().join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let five_hour_reset_at = Utc::now().timestamp() + 3_600;
+        let weekly_reset_at = Utc::now().timestamp() + 7 * 86_400;
+        fs::write(
+            sessions.join("rollout-2026-06-17T17-00-00-test.jsonl"),
+            format!(
+                r#"{{"timestamp":"2026-06-17T17:10:00.000Z","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":80,"reasoning_output_tokens":20,"total_tokens":1080}},"last_token_usage":{{"input_tokens":250,"cached_input_tokens":50,"output_tokens":30,"reasoning_output_tokens":5,"total_tokens":280}}}},"rate_limits":{{"primary":{{"used_percent":39.0,"window_minutes":300,"resets_at":{five_hour_reset_at}}},"secondary":{{"used_percent":61.0,"window_minutes":10080,"resets_at":{weekly_reset_at}}},"plan_type":"plus"}}}}}}"#
+            ),
+        )
+        .unwrap();
+
+        let db = AppDb::in_memory().unwrap();
+        let scanner = CodexScanner::new(db);
+        scanner
+            .update_settings(&Settings {
+                sessions_path: sessions.to_string_lossy().to_string(),
+                always_on_top: true,
+                stale_after_minutes: 5,
+                heatmap_days: 14,
+            })
+            .unwrap();
+
+        let state = scanner.warm_start_dashboard_state().unwrap();
+
+        assert_eq!(state.limits.five_hour.used_percent, Some(39.0));
+        assert_eq!(state.limits.weekly.used_percent, Some(61.0));
+        assert!(state.warnings.is_empty());
     }
 
     #[test]
